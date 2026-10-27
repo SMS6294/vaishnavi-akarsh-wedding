@@ -143,6 +143,18 @@ button, input, select, textarea { font: inherit; }
   color: var(--ink);
 }
 
+.hero .button-light {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 0;
+  min-width: 220px;
+  box-sizing: border-box;
+}
+
+.hero .button-label { grid-column: 2; }
+.hero .button-arrow { grid-column: 3; justify-self: end; }
+
 .button-light:hover { background: #e9dfcc; }
 
 .image-caption {
