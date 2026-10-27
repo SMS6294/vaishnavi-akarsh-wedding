@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f8f5ef">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Family Login | Vaishnavi & Akarsh</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=DM+Sans:wght@400;500;600&family=Great+Vibes&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="navbar">
+    <a class="monogram" href="/" aria-label="Return to wedding invitation">V <span>&</span> A</a>
+    <span class="nav-link">PRIVATE FAMILY ACCESS</span>
+    <a class="admin-link" href="/">Back to invitation</a>
+  </header>
+
+  <main class="admin-page-main section">
+    <section class="admin-page-card" aria-labelledby="familyLoginTitle">
+      <div id="adminLoginSection">
+        <p class="eyebrow dark-eyebrow">VAISHNAVI & AKARSH · 20 DECEMBER 2026</p>
+        <h1 id="familyLoginTitle">Family Login</h1>
+        <p class="admin-intro">This private area is for the family. Sign in to view wedding RSVP responses and attendance totals.</p>
+        <form class="admin-login-form" id="adminLoginForm">
+          <label for="adminUsername">Username</label>
+          <input id="adminUsername" name="username" autocomplete="username" required maxlength="100">
+          <label for="adminPassword">Password</label>
+          <input id="adminPassword" name="password" type="password" autocomplete="current-password" required>
+          <button class="button button-dark" id="adminLoginButton" type="submit">SIGN IN <span aria-hidden="true">↗</span></button>
+          <p class="form-message" id="adminLoginMessage" role="status" aria-live="polite"></p>
+        </form>
+        <p class="admin-privacy-note">Guest details are shown only after successful authentication. Guests do not need an account to RSVP.</p>
+        <a class="admin-page-back" href="/">← Return to the wedding invitation</a>
+      </div>
+      <section id="adminDashboard" class="admin-dashboard" aria-live="polite" hidden></section>
+    </section>
+  </main>
+
+  <footer>
+    <a class="monogram footer-monogram" href="/">V <span>&</span> A</a>
+    <p>Private family access</p>
+    <span>VAISHNAVI & AKARSH · 20 DECEMBER 2026</span>
+  </footer>
+  <script src="/app.js"></script>
+</body>
+</html>
