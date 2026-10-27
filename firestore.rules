@@ -1,0 +1,43 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Only Firebase Auth UIDs explicitly listed below may read RSVP records.
+    function isAuthorisedFamily() {
+      return request.auth != null
+        && request.auth.uid in ['A1LrXMF9nvN63dwS5duZN1YzrmZ2'];
+    }
+
+    function validRsvp() {
+      let data = request.resource.data;
+      return data.keys().hasAll([
+          'name', 'phone', 'attending', 'count', 'companions', 'submittedAt'
+        ])
+        && data.keys().hasOnly([
+          'name', 'phone', 'attending', 'count', 'companions', 'submittedAt'
+        ])
+        && data.name is string
+        && data.name.size() > 0
+        && data.name.size() <= 100
+        && data.name.matches('.*\\S.*')
+        && data.phone is string
+        && data.phone.size() <= 30
+        && data.attending is string
+        && data.attending in ['yes', 'no']
+        && data.count is int
+        && data.companions is string
+        && data.companions.size() <= 500
+        && data.submittedAt is timestamp
+        && data.submittedAt == request.time
+        && (data.attending == 'yes'
+          ? data.count >= 1 && data.count <= 10
+          : data.count == 0 && data.companions == '');
+    }
+
+    match /rsvps/{rsvpId} {
+      // Public visitors can only create a new validated document.
+      allow create: if validRsvp();
+      allow get, list: if isAuthorisedFamily();
+      allow update, delete: if false;
+    }
+  }
+}

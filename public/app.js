@@ -1,5 +1,43 @@
 "use strict";
 
+import { firebaseConfig } from "./firebase-config.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js";
+import {
+  getAuth,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut
+} from "https://www.gstatic.com/firebasejs/13.1.0/firebase-auth.js";
+import {
+  collection,
+  addDoc,
+  getDocs,
+  getFirestore,
+  serverTimestamp
+} from "https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore.js";
+
+const firebaseConfigured = Object.values(firebaseConfig).every(
+  (value) => typeof value === "string" && value.length > 0 && !value.startsWith("REPLACE_WITH_")
+);
+let auth = null;
+let db = null;
+let firebaseInitError = "";
+
+if (firebaseConfigured) {
+  try {
+    const app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+  } catch (error) {
+    firebaseInitError = error.message || "Firebase could not be initialized.";
+  }
+}
+
+function firebaseUnavailableMessage() {
+  if (!firebaseConfigured) return "Firebase is not configured yet. Add the web app values in public/firebase-config.js.";
+  return firebaseInitError || "Firebase is unavailable. Check the configuration and try again.";
+}
+
 /* ========================================
    WEDDING COUNTDOWN
 ======================================== */
@@ -33,7 +71,7 @@
 })();
 
 /* ========================================
-   PUBLIC RSVP FORM
+   PUBLIC RSVP FORM → FIRESTORE
 ======================================== */
 (() => {
   const form = document.getElementById("rsvpForm");
@@ -66,24 +104,35 @@
       name: document.getElementById("guestName").value.trim(),
       phone: document.getElementById("phone").value.trim(),
       attending: attending.value,
-      count: Number(count.value),
-      companions: companions.value.trim()
+      count: attending.value === "yes" ? Number(count.value) : 0,
+      companions: attending.value === "yes" ? companions.value.trim() : ""
     };
 
+    const validationError = validateRsvp(payload);
+    if (validationError) {
+      message.textContent = validationError;
+      message.classList.add("message-error");
+      submitButton.disabled = false;
+      return;
+    }
+    if (!db) {
+      message.textContent = firebaseUnavailableMessage();
+      message.classList.add("message-error");
+      submitButton.disabled = false;
+      return;
+    }
+
     try {
-      const response = await fetch("/api/rsvp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+      await addDoc(collection(db, "rsvps"), {
+        ...payload,
+        submittedAt: serverTimestamp()
       });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || "Could not submit your RSVP. Please try again.");
-      message.textContent = result.message || "Thank you! Your RSVP has been received.";
+      message.textContent = "Thank you! Your RSVP has been received.";
       message.classList.add("message-success");
       form.reset();
       updateAttendanceFields();
     } catch (error) {
-      message.textContent = error.message || "A connection error occurred. Please try again.";
+      message.textContent = firestoreErrorMessage(error, "Could not submit your RSVP. Please try again.");
       message.classList.add("message-error");
     } finally {
       submitButton.disabled = false;
@@ -91,8 +140,27 @@
   });
 })();
 
+function validateRsvp(data) {
+  if (typeof data.name !== "string" || !data.name.trim() || data.name.length > 100) {
+    return "Please enter your name (up to 100 characters).";
+  }
+  if (typeof data.phone !== "string" || data.phone.length > 30) {
+    return "Please enter a phone number up to 30 characters.";
+  }
+  if (!["yes", "no"].includes(data.attending)) {
+    return "Please select your attendance.";
+  }
+  if (data.attending === "yes" && (!Number.isInteger(data.count) || data.count < 1 || data.count > 10)) {
+    return "Choose between 1 and 10 guests.";
+  }
+  if (typeof data.companions !== "string" || data.companions.length > 500) {
+    return "Additional guest names must be 500 characters or fewer.";
+  }
+  return "";
+}
+
 /* ========================================
-   SEPARATE PRIVATE FAMILY LOGIN PAGE
+   PRIVATE FAMILY DASHBOARD → FIREBASE AUTH
 ======================================== */
 (() => {
   const loginForm = document.getElementById("adminLoginForm");
@@ -126,10 +194,10 @@
 
     const stats = el("div", "admin-stats");
     [
-      ["Confirmed attendees", data.confirmedPeople ?? 0],
-      ["Attending responses", data.attendingResponses ?? 0],
-      ["Declined responses", data.declinedResponses ?? 0],
-      ["Total RSVP responses", data.totalResponses ?? 0]
+      ["Confirmed attendees", data.confirmedPeople],
+      ["Attending responses", data.attendingResponses],
+      ["Declined responses", data.declinedResponses],
+      ["Total RSVP responses", data.totalResponses]
     ].forEach(([label, value]) => {
       const card = el("div", "admin-stat");
       card.append(el("span", "", label), el("strong", "", value));
@@ -144,17 +212,21 @@
       refreshButton.disabled = true;
       refreshButton.textContent = "Refreshing…";
       try { await loadDashboard(); }
-      catch (error) { dashboardError(error.message); }
+      catch (error) {
+        refreshButton.disabled = false;
+        refreshButton.textContent = "Refresh responses";
+        dashboardError(firestoreErrorMessage(error, "Could not load the private dashboard."));
+      }
     });
     const logoutButton = el("button", "button button-dark", "Log out");
     logoutButton.type = "button";
     logoutButton.addEventListener("click", logout);
     const backLink = el("a", "admin-back-link", "Return to invitation");
-    backLink.href = "/";
+    backLink.href = "./";
     actions.append(refreshButton, logoutButton, backLink);
     panel.appendChild(actions);
 
-    const guests = Array.isArray(data.guests) ? data.guests : [];
+    const guests = data.guests;
     if (!guests.length) {
       panel.appendChild(el("div", "admin-empty", "No RSVP responses have been received yet."));
       return;
@@ -169,10 +241,11 @@
     table.appendChild(thead);
 
     const tbody = document.createElement("tbody");
-    guests.slice().sort((a, b) => String(b.submittedAt || "").localeCompare(String(a.submittedAt || ""))).forEach((guest) => {
+    guests.sort((a, b) => (b.submittedAt?.getTime() || 0) - (a.submittedAt?.getTime() || 0)).forEach((guest) => {
       const row = document.createElement("tr");
-      const submitted = guest.submittedAt ? new Date(guest.submittedAt).toLocaleString() : "—";
-      [guest.name || "—", guest.phone || "—", guest.attending === "yes" ? "Attending" : "Declined", guest.count ?? 0, guest.companions || "—", submitted].forEach((value) => row.appendChild(el("td", "", value)));
+      const submitted = guest.submittedAt ? guest.submittedAt.toLocaleString() : "—";
+      [guest.name, guest.phone || "—", guest.attending === "yes" ? "Attending" : "Declined", guest.count, guest.companions || "—", submitted]
+        .forEach((value) => row.appendChild(el("td", "", value)));
       tbody.appendChild(row);
     });
     table.appendChild(tbody);
@@ -187,54 +260,89 @@
   }
 
   async function loadDashboard() {
-    const response = await fetch("/api/admin/data", { credentials: "same-origin" });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || "Could not load the private dashboard.");
-    showDashboard(data);
+    if (!db || !auth?.currentUser) throw new Error(firebaseUnavailableMessage());
+    const snapshot = await getDocs(collection(db, "rsvps"));
+    const guests = snapshot.docs.map((document) => {
+      const data = document.data();
+      return {
+        name: data.name || "—",
+        phone: data.phone || "",
+        attending: data.attending,
+        count: data.count ?? 0,
+        companions: data.companions || "",
+        submittedAt: data.submittedAt?.toDate?.() || null
+      };
+    });
+    showDashboard({
+      guests,
+      totalResponses: guests.length,
+      attendingResponses: guests.filter((guest) => guest.attending === "yes").length,
+      declinedResponses: guests.filter((guest) => guest.attending === "no").length,
+      confirmedPeople: guests.reduce((sum, guest) => sum + (guest.attending === "yes" ? guest.count : 0), 0)
+    });
   }
 
   async function logout() {
     try {
-      const response = await fetch("/api/admin/logout", { method: "POST", credentials: "same-origin" });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || "Could not log out. Please try again.");
+      if (!auth) throw new Error(firebaseUnavailableMessage());
+      await signOut(auth);
       panel.hidden = true;
       panel.replaceChildren();
       loginSection.hidden = false;
       loginForm.reset();
       setMessage("You have logged out successfully.", "message-success");
-      document.getElementById("adminUsername").focus();
+      document.getElementById("adminEmail").focus();
     } catch (error) {
-      dashboardError(error.message);
+      dashboardError(firestoreErrorMessage(error, "Could not log out. Please try again."));
     }
   }
 
   loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    setMessage("Checking credentials…");
+    setMessage("Signing in…");
     loginButton.disabled = true;
-    const username = document.getElementById("adminUsername").value.trim();
+    const email = document.getElementById("adminEmail").value.trim();
     const password = document.getElementById("adminPassword").value;
 
     try {
-      const response = await fetch("/api/admin/login", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password })
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || "Incorrect username or password.");
-      await loadDashboard();
+      if (!auth) throw new Error(firebaseUnavailableMessage());
+      await signInWithEmailAndPassword(auth, email, password);
+      setMessage("Signed in. Checking family access…");
     } catch (error) {
-      setMessage(error.message || "Login failed. Please try again.", "message-error");
+      if (auth?.currentUser) await signOut(auth).catch(() => {});
+      setMessage(firestoreErrorMessage(error, "Sign-in failed. Please try again."), "message-error");
     } finally {
       loginButton.disabled = false;
     }
   });
 
-  // If the family is already signed in, show the private dashboard immediately.
-  loadDashboard().catch(() => {
-    document.getElementById("adminUsername").focus();
-  });
+  if (auth) {
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) return;
+      try { await loadDashboard(); }
+      catch (error) {
+        panel.hidden = false;
+        panel.replaceChildren();
+        dashboardError(firestoreErrorMessage(error, "Could not load the private dashboard."));
+        const logoutButton = el("button", "button button-dark", "Log out");
+        logoutButton.type = "button";
+        logoutButton.addEventListener("click", logout);
+        panel.appendChild(logoutButton);
+      }
+    });
+  } else {
+    setMessage(firebaseUnavailableMessage(), "message-error");
+  }
 })();
+
+function firestoreErrorMessage(error, fallback) {
+  const code = error?.code || "";
+  if (code.includes("permission-denied")) {
+    return "Access denied. Confirm the Firestore rules and that this family account is authorised.";
+  }
+  if (code.includes("unauthenticated")) return "Please sign in with an authorised family account.";
+  if (code.includes("invalid-credential") || code.includes("wrong-password") || code.includes("user-not-found")) {
+    return "Incorrect email or password.";
+  }
+  return error?.message || fallback;
+}
