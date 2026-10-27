@@ -58,7 +58,7 @@ button, input, select, textarea { font: inherit; }
   place-items: center;
   color: white;
   text-align: center;
-  background: #555 url("/images/img1.jpeg") center 43% / cover no-repeat;
+  background: #555 url("./images/img1.jpeg") center 43% / cover no-repeat;
 }
 
 .hero-shade {
