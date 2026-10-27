@@ -57,7 +57,7 @@ function firebaseUnavailableMessage() {
       hoursEl.textContent = "00";
       minutesEl.textContent = "00";
       secondsEl.textContent = "00";
-      if (messageEl) messageEl.textContent = "Today is Vaishnavi & Akarsh's special day!";
+      if (messageEl) messageEl.textContent = "Today is Adv. Vaishnavi A U and Akarsh's special day!";
       return;
     }
     const totalSeconds = Math.floor(remaining / 1000);
